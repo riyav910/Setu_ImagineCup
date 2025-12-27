@@ -1,27 +1,32 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Camera, Upload, Share2, AlertCircle } from 'lucide-react';
+import { Camera, Upload, Share2, AlertCircle, Sparkles } from 'lucide-react';
 
 function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [features, setFeatures] = useState("");
+  const [userPrice, setUserPrice] = useState("");
 
   const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
+    // If called from the file input (event has target.files)
+    const file = event.target.files ? event.target.files[0] : null;
     if (!file) return;
 
     setImagePreview(URL.createObjectURL(file));
     setLoading(true);
-    setResult(null); // Reset previous results
+    setResult(null);
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("user_features", features);
+    formData.append("user_price", userPrice);
 
     try {
       const API_URL = import.meta.env.VITE_API_URL;
       const response = await axios.post(`${API_URL}/analyze`, formData);
-      console.log("Backend Response:", response.data); // Debugging line
+      console.log("Backend Response:", response.data);
       setResult(response.data);
     } catch (error) {
       console.error("Error analyzing image:", error);
@@ -31,37 +36,79 @@ function App() {
     }
   };
 
+  const calculatePosition = (min, max, current) => {
+    if (!min || !max || !current) return 50;
+    const range = max - min;
+    const position = ((current - min) / range) * 100;
+    return Math.min(Math.max(position, 0), 100); // Clamp between 0-100%
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4 font-sans">
       <header className="w-full max-w-md bg-white rounded-2xl shadow-sm p-4 mb-6 text-center">
-        <h1 className="text-2xl font-bold text-blue-600">Setu AI 🛍️</h1>
+        <h1 className="text-2xl font-bold text-blue-600 tracking-tight">Setu AI 🛍️</h1>
         <p className="text-gray-500 text-sm">Selling made simple.</p>
       </header>
 
-      <main className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden">
+      <main className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden transition-all duration-300">
 
         {/* INPUT SECTION */}
         {!result && (
           <div className="p-8 flex flex-col items-center justify-center min-h-[400px]">
             {imagePreview ? (
-              <div className="relative w-full h-64 rounded-xl overflow-hidden mb-6">
+              <div className="relative w-full h-64 rounded-xl overflow-hidden mb-6 shadow-md">
                 <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                 {loading && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-medium animate-pulse">
-                    Analyzing Image...
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white font-medium animate-pulse">
+                    <Sparkles className="w-8 h-8 mb-2 animate-spin-slow" />
+                    Analyzing Market...
                   </div>
                 )}
               </div>
             ) : (
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 mb-6 w-full flex flex-col items-center">
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 mb-6 w-full flex flex-col items-center hover:bg-gray-50 transition-colors">
                 <Camera className="w-12 h-12 text-gray-400 mb-2" />
-                <p className="text-gray-400">Tap to take photo</p>
+                <p className="text-gray-400 text-sm">Tap to take photo</p>
               </div>
             )}
 
-            <label className="w-full">
-              <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" />
-              <div className="bg-blue-600 text-white font-bold py-4 rounded-xl text-center cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-2">
+            {/* INPUT FIELDS CONTAINER */}
+            <div className="w-full mb-4 space-y-3">
+
+              {/* 1. Uniqueness Input */}
+              <div>
+                <label className="block text-gray-700 text-sm font-bold mb-1 flex items-center gap-2">
+                  <Sparkles size={16} className="text-yellow-500" />
+                  Unique Features (Optional)
+                </label>
+                <textarea
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-sm bg-gray-50"
+                  placeholder="e.g. Pure Silk, 24k Gold thread..."
+                  rows="2"
+                  value={features}
+                  onChange={(e) => setFeatures(e.target.value)}
+                />
+              </div>
+
+              {/* 2. User Price Input (New!) */}
+              <div>
+                <label className="block text-gray-700 text-sm font-bold mb-1">
+                  Expected Price (₹) <span className="text-gray-400 font-normal text-xs">(If you have one)</span>
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-sm bg-gray-50"
+                  placeholder="e.g. 1500"
+                  value={userPrice}
+                  onChange={(e) => setUserPrice(e.target.value)}
+                />
+              </div>
+
+            </div>
+
+            <label className={`w-full ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+              <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" disabled={loading} />
+              <div className="bg-blue-600 text-white font-bold py-4 rounded-xl text-center cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-200">
                 <Upload size={20} />
                 {loading ? "Processing..." : "Upload Photo"}
               </div>
@@ -69,7 +116,7 @@ function App() {
           </div>
         )}
 
-        {/* ERROR STATE (New!) */}
+        {/* ERROR STATE */}
         {result && result.status === "error" && (
           <div className="p-6 text-center">
             <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-4 flex items-center gap-3 text-left">
@@ -81,8 +128,8 @@ function App() {
               </div>
             </div>
             <button
-              onClick={() => { setResult(null); setImagePreview(null); }}
-              className="w-full border border-gray-300 py-3 rounded-xl text-gray-500"
+              onClick={() => { setResult(null); setImagePreview(null); setFeatures(""); }}
+              className="w-full border border-gray-300 py-3 rounded-xl text-gray-500 hover:bg-gray-50 transition"
             >
               Try Again
             </button>
@@ -92,49 +139,95 @@ function App() {
         {/* SUCCESS STATE */}
         {result && result.status === "success" && (
           <div className="p-6">
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-800">{result.product_name}</h2>
-                <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">High Demand</span>
+                <h2 className="text-xl font-bold text-gray-800 leading-tight">{result.product_name}</h2>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">High Demand</span>
+                  {/* NEW: Show detected unique tags */}
+                  {result.unique_tags && result.unique_tags.map((tag, i) => (
+                    <span key={i} className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles size={8} /> {tag}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="text-right flex flex-col items-end">
-                <p className="text-gray-500 text-xs">Recommended Price</p>
-                <p className="text-2xl font-bold text-blue-600">{result.suggested_price}</p>
 
-                {/* NEW: Price Explanation Tag */}
-                {result.pricing_reason && (
-                  <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded mt-1 max-w-[150px] text-right">
-                    📈 {result.pricing_reason}
-                  </span>
+              {/* Price & Graph Section */}
+              <div className="w-full mt-6 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <div className="flex justify-between items-end mb-2">
+                  <div>
+                    <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Recommended Price</p>
+                    <p className="text-3xl font-extrabold text-blue-600">{result.suggested_price}</p>
+                  </div>
+                  {result.pricing_reason && (
+                    <span className="text-[10px] bg-white text-blue-700 px-2 py-1 rounded border border-blue-200 shadow-sm max-w-[50%] text-right leading-tight">
+                      📈 {result.pricing_reason}
+                    </span>
+                  )}
+                </div>
+
+                {/* VISUAL COMPETITOR GRAPH */}
+                {result.market_stats && (
+                  <div className="mt-4">
+                    <div className="relative h-2 bg-gray-200 rounded-full w-full">
+                      {/* The "Average" Marker (Gray Tick) */}
+                      <div
+                        className="absolute top-0 bottom-0 w-1 bg-gray-400 opacity-50"
+                        style={{ left: `${calculatePosition(result.market_stats.min, result.market_stats.max, result.market_stats.avg)}%` }}
+                      ></div>
+
+                      {/* The User's Price Marker (Blue Dot) */}
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 border-2 border-white rounded-full shadow-md transition-all duration-1000 ease-out"
+                        style={{ left: `${calculatePosition(result.market_stats.min, result.market_stats.max, result.raw_price)}%` }}
+                      ></div>
+                    </div>
+
+                    {/* Labels below the bar */}
+                    <div className="flex justify-between text-[10px] text-gray-500 mt-2 font-medium">
+                      <span>Cheap (₹{result.market_stats.min})</span>
+                      <span className="text-gray-400">Avg Market</span>
+                      <span>Luxury (₹{result.market_stats.max})</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-500 mb-2 uppercase flex items-center gap-2">
-                  <Share2 size={16} /> WhatsApp Message
+              {/* WhatsApp Card */}
+              <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                <h3 className="text-xs font-bold text-green-700 mb-2 uppercase flex items-center gap-2">
+                  <Share2 size={14} /> WhatsApp Message
                 </h3>
-                <p className="text-gray-700 italic">"{result.listings.whatsapp}"</p>
-                <button className="mt-3 w-full bg-green-500 text-white py-2 rounded-lg font-medium text-sm">
-                  Send to Buyers
+                <p className="text-gray-700 text-sm italic bg-white p-3 rounded-lg border border-green-100 shadow-sm">
+                  "{result.listings.whatsapp}"
+                </p>
+                <button className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-green-200">
+                  Copy & Send
                 </button>
               </div>
 
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-500 mb-2 uppercase">
+              {/* Amazon Card */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
                   Amazon Listing
                 </h3>
-                <p className="text-gray-800 font-medium text-sm">{result.listings.amazon.title}</p>
-                <ul className="list-disc list-inside text-xs text-gray-600 mt-2">
-                  {result.listings.amazon.features.map((f, i) => <li key={i}>{f}</li>)}
+                <p className="text-gray-900 font-bold text-sm mb-2">{result.listings.amazon.title}</p>
+                <ul className="space-y-1">
+                  {result.listings.amazon.features.map((f, i) => (
+                    <li key={i} className="text-xs text-gray-600 flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span> {f}
+                    </li>
+                  ))}
                 </ul>
               </div>
             </div>
 
             <button
-              onClick={() => { setResult(null); setImagePreview(null); }}
-              className="mt-8 w-full border border-gray-300 py-3 rounded-xl text-gray-500 text-sm"
+              onClick={() => { setResult(null); setImagePreview(null); setFeatures(""); }}
+              className="mt-8 w-full border border-gray-300 py-3 rounded-xl text-gray-500 text-sm font-medium hover:bg-gray-50 transition"
             >
               Scan Another Item
             </button>

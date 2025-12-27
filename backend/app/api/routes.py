@@ -1,54 +1,58 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.services.azure_vision import get_image_analysis
 from app.services.business_logic import (
-    filter_main_object, 
+    get_product_info,
     calculate_smart_price, 
     generate_advice, 
     generate_listings,
     analyze_image_quality,
-    MATERIALS # <--- Importing this list to find material
 )
 
 router = APIRouter()
 
 @router.post("/analyze")
-async def analyze_endpoint(file: UploadFile = File(...)):
+async def analyze_endpoint(
+    file: UploadFile = File(...),
+    user_features: str = Form(""),
+    user_price: str = Form("0")
+):
     try:
-        # 1. READ DATA
+        # Parse price safely
+        try:
+            expected_price = int(user_price)
+        except:
+            expected_price = 0
+
+        # 1. READ IMAGE
         image_data = await file.read()
         
-        # 2. CALL SERVICES (Get Raw Data First)
-        # Call Azure Vision
+        # 2. AZURE VISION & OPENCV
         analysis = get_image_analysis(image_data)
-        # Call OpenCV
-        quality_stats = analyze_image_quality(image_data) 
+        quality_stats = analyze_image_quality(image_data)
         
-        # 3. EXTRACT VARIABLES (Define raw_tags HERE)
+        # 3. EXTRACT DATA
         raw_tags = [tag.name.lower() for tag in analysis.tags]
         caption = analysis.description.captions[0].text.capitalize() if analysis.description.captions else "Handmade item"
         confidence = analysis.tags[0].confidence if analysis.tags else 0.5
         
-        # 4. APPLY BUSINESS LOGIC (Now raw_tags exists!)
-        main_object = filter_main_object(raw_tags, caption)
+        # 4. BUSINESS LOGIC
+        main_object, material = get_product_info(raw_tags, caption)
         
-        # Identify Material (needed for Smart Pricing)
-        # We look for a known material in the tags, otherwise default
-        material = next((t for t in raw_tags if t in MATERIALS), "Standard Material")
+        # FIX IS HERE: Pass 'expected_price' to the function!
+        pricing_data = calculate_smart_price(main_object, material, user_features, expected_price)
         
-        # Calculate Price (Using Market Spy + AI Trends)
-        pricing_data = calculate_smart_price(main_object, material)
-        
-        # Generate Advice & Listings
         advice = generate_advice(confidence, quality_stats, raw_tags) 
-        listings = generate_listings(main_object, caption, raw_tags, pricing_data["price"])
+        listings = generate_listings(main_object, material, raw_tags, pricing_data["price"], caption)
         
-        # 5. RETURN RESPONSE
         return {
             "status": "success",
-            "product_name": f"Handcrafted {main_object.capitalize()}",
+            "product_name": main_object,
             "suggested_price": pricing_data["price"],     
             "price_uplift": pricing_data["uplift"],       
-            "pricing_reason": pricing_data["explanation"], 
+            "pricing_reason": pricing_data["explanation"],
+            "unique_tags": pricing_data["keywords_detected"],
+            "market_stats": pricing_data["market_stats"], 
+            "raw_price": pricing_data["raw_price"],
             "photo_advice": advice,
             "listings": listings
         }
