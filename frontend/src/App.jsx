@@ -1,25 +1,42 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Camera, Upload, Share2, AlertCircle, Sparkles } from 'lucide-react';
+import { Camera, Upload, Share2, AlertCircle, Sparkles, X } from 'lucide-react';
+import AudioRecorder from './AudioRecorder';
 
 function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+
   const [imagePreview, setImagePreview] = useState(null);
   const [features, setFeatures] = useState("");
   const [userPrice, setUserPrice] = useState("");
 
   const handleImageUpload = async (event) => {
-    // If called from the file input (event has target.files)
-    const file = event.target.files ? event.target.files[0] : null;
-    if (!file) return;
+    // 1. Get all selected files (not just the first one)
+    const inputFiles = event.target.files;
+    if (!inputFiles || inputFiles.length === 0) return;
 
-    setImagePreview(URL.createObjectURL(file));
+    const files = Array.from(inputFiles); // Convert FileList to Array
+
+    // 2. Generate Previews
+    // (If you have 'setImagePreviews' from the previous step, use that. 
+    // Otherwise, this sets the first image as the main preview so the UI doesn't break)
+    const newPreviews = files.map((file) => URL.createObjectURL(file));
+    setImagePreview(newPreviews[0]);
+    // setImagePreviews(newPreviews); // Uncomment this if you added the multiple preview state
+
     setLoading(true);
     setResult(null);
 
     const formData = new FormData();
-    formData.append("file", file);
+
+    // 3. Append Multiple Files
+    // ⚠️ IMPORTANT: The key must be "files" (plural) to match backend 'files: List[UploadFile]'
+    files.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    // 4. Append User Inputs (Voice/Text & Price) - KEPT INTACT
     formData.append("user_features", features);
     formData.append("user_price", userPrice);
 
@@ -34,6 +51,10 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVoiceInput = (text) => {
+    setFeatures((prev) => prev ? `${prev} ${text}` : text);
   };
 
   const calculatePosition = (min, max, current) => {
@@ -77,13 +98,19 @@ function App() {
 
               {/* 1. Uniqueness Input */}
               <div>
-                <label className="block text-gray-700 text-sm font-bold mb-1 flex items-center gap-2">
-                  <Sparkles size={16} className="text-yellow-500" />
-                  Unique Features (Optional)
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-gray-700 text-sm font-bold flex items-center gap-2">
+                    <Sparkles size={16} className="text-yellow-500" />
+                    Unique Features (Optional)
+                  </label>
+
+                  {/* VOICE RECORDER BUTTON */}
+                  <AudioRecorder onTranscriptionComplete={handleVoiceInput} />
+                </div>
+
                 <textarea
                   className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 text-sm bg-gray-50"
-                  placeholder="e.g. Pure Silk, 24k Gold thread..."
+                  placeholder="Type or Speak (e.g. 'Yeh banarasi saree hai...')"
                   rows="2"
                   value={features}
                   onChange={(e) => setFeatures(e.target.value)}
@@ -107,7 +134,7 @@ function App() {
             </div>
 
             <label className={`w-full ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-              <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" disabled={loading} />
+              <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" multiple />
               <div className="bg-blue-600 text-white font-bold py-4 rounded-xl text-center cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-200">
                 <Upload size={20} />
                 {loading ? "Processing..." : "Upload Photo"}
@@ -141,16 +168,33 @@ function App() {
           <div className="p-6">
             <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-800 leading-tight">{result.product_name}</h2>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">High Demand</span>
-                  {/* NEW: Show detected unique tags */}
-                  {result.unique_tags && result.unique_tags.map((tag, i) => (
-                    <span key={i} className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
-                      <Sparkles size={8} /> {tag}
-                    </span>
-                  ))}
+                <h2 className="text-xl font-bold text-gray-800 leading-tight">
+                  {result.product_name}
+                </h2>
+
+                {/* ✨ NEW: MATERIAL BADGE ✨ */}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {/* Material Badge */}
+                  <span className="bg-purple-100 text-purple-800 text-xs font-bold px-3 py-1 rounded-full border border-purple-200 shadow-sm flex items-center gap-1">
+                    💎 {result.material}
+                  </span>
+
+                  {/* High Demand Badge */}
+                  <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider flex items-center">
+                    🔥 High Demand
+                  </span>
                 </div>
+
+                {/* Unique Tags (existing) */}
+                {result.unique_tags && result.unique_tags.length > 0 && (
+                  <div className="flex gap-1 mt-2 flex-wrap">
+                    {result.unique_tags.map((tag, i) => (
+                      <span key={i} className="bg-yellow-50 text-yellow-700 text-[10px] border border-yellow-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        ✨ {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Price & Graph Section */}
@@ -166,6 +210,21 @@ function App() {
                     </span>
                   )}
                 </div>
+
+                {result.market_stats && result.market_stats.sources && (
+                  <div className="mt-4 pt-4 border-t border-blue-200">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">
+                      Verified Prices From
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.market_stats.sources.map((source, idx) => (
+                        <span key={idx} className="bg-white text-blue-600 text-xs font-medium px-2 py-1 rounded border border-blue-100 shadow-sm flex items-center gap-1">
+                          🌍 {source}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* VISUAL COMPETITOR GRAPH */}
                 {result.market_stats && (
@@ -212,7 +271,7 @@ function App() {
               {/* Amazon Card */}
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <h3 className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
-                  Amazon Listing
+                  E-commerce Listing
                 </h3>
                 <p className="text-gray-900 font-bold text-sm mb-2">{result.listings.amazon.title}</p>
                 <ul className="space-y-1">
