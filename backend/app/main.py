@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware 
+from app.api import routes
 from app.api.routes import router
 
 app = FastAPI(title="Setu AI Backend")
@@ -7,14 +8,16 @@ app = FastAPI(title="Setu AI Backend")
 # CORS (Allow React)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  
+    allow_headers=["*"], 
 )
 
-# Connect Routes
-app.include_router(router)
+# Connect Routes        
+app.include_router(routes.router)
+
+# app.include_router(router)
 
 @app.get("/")
 def root():

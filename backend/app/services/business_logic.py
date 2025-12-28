@@ -10,17 +10,26 @@ from app.services.llm_service import (
 # --- CONSTANTS ---
 # We keep IGNORED_TAGS because Azure sometimes gives garbage like "indoor" or "floor"
 IGNORED_TAGS = ["text", "writing", "design", "indoor", "table", "floor", "close-up", "furniture", "houseplant", "wall", "ground", "surface", "ceiling"]
-
 def get_product_info(raw_tags, caption):
-    """Returns Name, Material, AND Exclusions."""
+    """
+    Returns Name, Material, AND Exclusions.
+    """
     ai_data = analyze_product_details(raw_tags, caption)
+    
     if ai_data:
-        # Defaults to empty list if key missing
-        return ai_data["name"], ai_data["material"], ai_data.get("exclusions", [])
+        # SAFETY FIX: Use .get() and 'or' to ensure we never return None
+        # If AI returns null, we default to "Standard Material"
+        name = ai_data.get("name") or "Handcrafted Item"
+        material = ai_data.get("material") or "Standard Material"
+        exclusions = ai_data.get("exclusions") or []
+        
+        return name, material, exclusions
 
-    # Fallback
+    # Fallback (If AI Service is totally down)
     valid_tags = [t for t in raw_tags if t not in IGNORED_TAGS]
-    return (valid_tags[0].capitalize() if valid_tags else "Item"), "Standard Material", []
+    fallback_name = valid_tags[0].capitalize() if valid_tags else "Item"
+    
+    return fallback_name, "Standard Material", []
 
 def apply_psychological_pricing(price):
     if price < 100: return price

@@ -54,9 +54,9 @@ def generate_creative_listings(product_name, material, tags, price, caption):
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7, # Higher creativity for better writing
+            temperature=0.3, # Higher creativity for better writing
             max_tokens=1024,
             response_format={"type": "json_object"}
         )
@@ -68,23 +68,31 @@ def generate_creative_listings(product_name, material, tags, price, caption):
 def analyze_product_details(tags, caption):
     """
     Identifies Name, Material, AND Search Exclusions (Noise).
+    Now smarter at ignoring props (like shoes/models) in multi-photo uploads.
     """
     if not client:
         return {"name": "Handcrafted Item", "material": "Standard", "exclusions": []}
 
     prompt = f"""
-    Analyze the image tags and caption to extract product details for e-commerce pricing.
+    You are an AI Listing Assistant. You are analyzing a GALLERY of images for a SINGLE product listing.
     
-    Tags: {', '.join(tags)}
-    Caption: {caption}
+    Context from Images:
+    - Detected Tags: {', '.join(tags)}
+    - Visual Narrative: {caption}
     
+    CRITICAL INSTRUCTION:
+    - Identify the MAIN product being sold. 
+    - If the images show a "Man wearing a T-shirt and Sneakers", determine which one is the product.
+    - If 4 photos show a Shirt and 1 shows Shoes, the product is the SHIRT.
+    - Ignore props, models, and accessories (e.g., if selling a dress, ignore the model's shoes/purse).
+    - Do identify if we are selling an accessory (e.g., watch, bag).
+
     Task:
-    1. Identify the specific Product Name (e.g. "King Size Bed", "Split AC").
-    2. Identify the Material (e.g. "Teak Wood", "Plastic").
-    3. Identify 3-5 "Noise Keywords" that confuse price search for this specific item.
-       - If "Bed": exclude ["sheet", "cover", "pillow", "mosquito net"].
-       - If "AC": exclude ["remote", "cover", "service", "stand"].
-       - If "Laptop": exclude ["skin", "cover", "bag", "guard"].
+    1. Identify the specific Product Name (e.g. "Men's Black Tracksuit", "Printed T-Shirt").
+    2. Identify the Material (e.g. "Cotton Blend", "Polyester").
+    3. Identify 3-5 "Noise Keywords" to exclude from price search.
+       - Example: If selling a "Bed", exclude ["sheet", "pillow"].
+       - Example: If selling a "T-Shirt", exclude ["shoes", "sneakers", "sunglasses"].
     
     Return JSON ONLY:
     {{
@@ -96,7 +104,7 @@ def analyze_product_details(tags, caption):
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             response_format={"type": "json_object"}
@@ -130,9 +138,9 @@ def identify_exact_product(tags, caption):
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, # Low temp = more factual
+            temperature=0.2, # Low temp = more factual
             max_tokens=20
         )
         # Clean up the response (remove quotes or extra spaces)
@@ -183,9 +191,9 @@ def analyze_complex_pricing(product_name, material, market_data):
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4, # Balanced creativity/logic
+            temperature=0.3, # Balanced creativity/logic
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
@@ -230,9 +238,9 @@ def analyze_price_trends(product_name, material, current_price):
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5, # Lower temperature for logical math
+            temperature=0.1, # Lower temperature for logical math
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
