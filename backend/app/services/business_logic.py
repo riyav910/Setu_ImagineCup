@@ -12,15 +12,15 @@ from app.services.llm_service import (
 IGNORED_TAGS = ["text", "writing", "design", "indoor", "table", "floor", "close-up", "furniture", "houseplant", "wall", "ground", "surface", "ceiling"]
 
 def get_product_info(raw_tags, caption):
-    """The new 'Master Function' that gets Name and Material from AI."""
+    """Returns Name, Material, AND Exclusions."""
     ai_data = analyze_product_details(raw_tags, caption)
     if ai_data:
-        return ai_data["name"], ai_data["material"]
+        # Defaults to empty list if key missing
+        return ai_data["name"], ai_data["material"], ai_data.get("exclusions", [])
 
+    # Fallback
     valid_tags = [t for t in raw_tags if t not in IGNORED_TAGS]
-    fallback_name = valid_tags[0].capitalize() if valid_tags else "Handcrafted Item"
-    fallback_material = "Sustainable Material"
-    return fallback_name, fallback_material
+    return (valid_tags[0].capitalize() if valid_tags else "Item"), "Standard Material", []
 
 def apply_psychological_pricing(price):
     if price < 100: return price
@@ -28,21 +28,28 @@ def apply_psychological_pricing(price):
     if remainder < 50: return price - remainder - 1 
     else: return price - remainder + 99
 
-def calculate_smart_price(main_object, material, user_features="", user_expected_price=None):
-    """
-    Price Engine v3: Spy -> User Fallback -> AI Optimize.
-    """
-    # 1. MARKET SPY (Try to find real data first)
+def calculate_smart_price(main_object, material, exclusions, user_features="", user_expected_price=None):
+    
+    print(f"\n💎 MATERIAL: {material.upper()} | 🚫 AVOIDING: {exclusions}")
+    
+    # 1. MARKET SPY (Pass exclusions!)
     unique_keywords = []
     if user_features:
         unique_keywords = extract_selling_points(user_features)
     
-    search_query = f"{main_object} {' '.join(unique_keywords)}"
-    market_stats = get_market_data(search_query)
+    search_query = f"{material} {main_object} {' '.join(unique_keywords)}"
     
-    # Retry with generic name if specific search failed
+    # PASS THE EXCLUSIONS HERE
+    market_stats = get_market_data(search_query, exclusions)
+    
     if not market_stats:
-        market_stats = get_market_data(main_object)
+        print("⚠️ Specific search failed. Retrying generic...")
+        market_stats = {
+             "min": ..., 
+             "max": ..., 
+             "avg": ..., 
+             "sources": ["Estimated based on User Input"] # Fallback source
+         }
 
     # 2. FALLBACK: USE USER'S PRICE (If Spy Failed)
     if not market_stats:
@@ -60,26 +67,19 @@ def calculate_smart_price(main_object, material, user_features="", user_expected
 
     # 3. AI STRATEGY (Apply Seasonality, Trends, & Uniqueness)
     # The AI will now modify the User's Price based on factors!
-    pricing_strategy = analyze_complex_pricing(f"{main_object} ({user_features})", material, market_stats)
-    
+    pricing_strategy = analyze_complex_pricing(f"{main_object}", material, market_stats)
     optimal_price = pricing_strategy.get("recommended_price", market_stats['avg'])
-    
-    # 4. UNIQUENESS MARKUP
-    if unique_keywords:
-        optimal_price = int(optimal_price * 1.15)
-        
-    reason = pricing_strategy.get("strategy", "Optimized based on market factors.")
+    if unique_keywords: optimal_price = int(optimal_price * 1.15)
     final_price = apply_psychological_pricing(optimal_price)
-    
+
     return {
         "price": f"₹ {final_price}", 
         "uplift": f"₹{market_stats['min']} - ₹{market_stats['max']}", 
-        "explanation": reason,
+        "explanation": pricing_strategy.get("strategy", "Optimized price."),
         "keywords_detected": unique_keywords,
-        "market_stats": market_stats, # Return for Graph
+        "market_stats": market_stats, 
         "raw_price": final_price
     }
-
 def analyze_image_quality(image_bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -103,36 +103,31 @@ def generate_advice(confidence, quality_stats, tags):
 
 def generate_listings(main_object, material, tags, price, caption):
     """
-    Generates dynamic content. 
-    If AI works -> Returns curated AI text.
-    If AI fails -> Constructs valid text from tags/caption (No hardcoding).
+    Primary: 100% AI Generation (Vibe-aware).
+    Backup: Safe, minimal text if AI fails.
     """
     
-    # 1. Try AI Generation (Now passing 'caption')
+    # 1. AI GENERATION FIRST
     ai_content = generate_creative_listings(main_object, material, tags, price, caption)
     
     if ai_content:
         return ai_content 
 
-    # 2. Smart Fallback (If AI is down)
-    # We build the text dynamically based on what we actually know
-    
-    # Create dynamic features from top tags
-    feature_1 = f"Premium quality {material}" if material else "High-quality build"
-    feature_2 = f"Designed for {tags[0]}" if tags else "Modern design"
-    feature_3 = f"{caption}" # Use the visual description as a feature
+    # 2. SAFETY NET (Only runs if AI crashes)
+    # We keep this generic so it applies to literally anything (Laptop, Cake, Shoe).
+    print("⚠️ AI generation failed. Using generic fallback.")
     
     return {
         "amazon": {
-            "title": f"{main_object} - {caption}",
+            "title": f"{main_object} ({material}) - {caption}",
             "features": [
-                feature_1.capitalize(),
-                feature_2.capitalize(),
-                "Durable and long-lasting",
-                "Available for immediate shipping",
-                f"Best value at {price}"
+                f"Made of {material}",
+                "Verified Quality",
+                "Available for immediate delivery",
+                "Durable construction",
+                f"Best price: {price}"
             ]
         },
-        "instagram": f"Check out this {main_object}! 📸 {caption}. Get yours now for {price}. #{main_object.replace(' ', '')} #NewArrival",
-        "whatsapp": f"Hello! We have a new {main_object} available. \n\nDetails: {caption}\nPrice: {price}.\n\nReply to order!"
+        "instagram": f"Check out this {main_object}! ✨ {caption}. DM for details. #{main_object.replace(' ', '')}",
+        "whatsapp": f"Hello! We have this {main_object} available.\nDetails: {caption}\nPrice: {price}"
     }

@@ -1,51 +1,94 @@
 import re
-import statistics # <--- Added this (was missing)
-from ddgs import DDGS # <--- Kept your correct import
+import statistics
+from urllib.parse import urlparse
+from ddgs import DDGS
+
+# ❌ BAD WORDS (Keep your existing list)
+NEGATIVE_KEYWORDS = ["cover", "sheet", "pillow", "cushion", "protector", "toy", "miniature", "poster", "sticker"]
+
+def extract_domain(url):
+    """Extracts 'amazon' from 'https://www.amazon.in/...'"""
+    try:
+        domain = urlparse(url).netloc
+        domain = domain.replace("www.", "").replace(".in", "").replace(".com", "")
+        return domain.capitalize()
+    except:
+        return "Online Store"
 
 def extract_prices(text):
-    """
-    Finds all valid rupee prices in a text string.
-    """
+    """(Keep your existing extraction logic here)"""
     matches = re.findall(r'(?:₹|Rs\.?|INR)\s?(\d{1,3}(?:,\d{3})*)', text, re.IGNORECASE)
-    
     valid_prices = []
     for match in matches:
-        price_val = int(match.replace(',', ''))
-        # Filter noise: Prices between ₹50 and ₹5,00,000
-        if 50 < price_val < 500000:
-            valid_prices.append(price_val)
+        try:
+            price_val = int(match.replace(',', ''))
+            if 100 < price_val < 500000:
+                valid_prices.append(price_val)
+        except:
+            continue
     return valid_prices
 
-def get_market_data(query):
+def remove_outliers(prices):
+    """(Keep your existing outlier logic here)"""
+    count = len(prices)
+    if count < 5: return prices
+    prices.sort()
+    if count <= 15: return prices[1:-1]
+    cut_bottom = int(count * 0.15)
+    cut_top = int(count * 0.10)
+    if count - (cut_bottom + cut_top) < 3: return prices[1:-1]
+    clean_prices = prices[cut_bottom : count - cut_top]
+    return clean_prices if clean_prices else prices
+
+def get_market_data(query, exclusions=[]):
     """
-    Scrapes the web to find the High, Low, and Average market price.
+    Returns Stats AND the list of Source Websites.
     """
-    print(f"🕵️ Deep Market Scan for: {query}...")
-    search_term = f"{query} price in India amazon flipkart myntra"
+    # 1. Dynamic Negative Query
+    negatives = " ".join([f"-{w}" for w in exclusions])
+    search_term = f"{query} price buy online india {negatives}"
+    
+    print(f"🕵️ Deep Market Scan for: '{search_term}'...")
     
     try:
-        # Get more results (15) for better accuracy
-        results = DDGS().text(search_term, region='in-en', max_results=15)
+        results = DDGS().text(search_term, region='in-en', max_results=20)
         
         all_prices = []
+        sources = set() # Use a set to store unique websites
+
         for result in results:
-            text_blob = result['title'] + " " + result['body']
-            found = extract_prices(text_blob)
-            all_prices.extend(found)
+            title = result['title']
+            body = result['body']
+            url = result['href'] # DuckDuckGo gives us the link!
+            
+            # Skip noise
+            if any(bad_word.lower() in title.lower() for bad_word in exclusions):
+                continue
+
+            found = extract_prices(title + " " + body)
+            
+            if found:
+                all_prices.extend(found)
+                # If we found a price, record the source
+                site_name = extract_domain(url)
+                if site_name not in ["Youtube", "Facebook", "Instagram"]: # Filter social media noise
+                    sources.add(site_name)
             
         if not all_prices:
-            return None # No data found
+            return None 
 
-        # Statistical Analysis
-        median_price = int(statistics.median(all_prices))
-        min_price = min(all_prices)
-        max_price = max(all_prices)
+        # Clean Data
+        cleaned_prices = remove_outliers(all_prices)
+        median_price = int(statistics.median(cleaned_prices))
         
+        # Convert set back to list for JSON
+        source_list = list(sources)[:5] # Keep top 5 sources
+
         return {
-            "min": min_price,
-            "max": max_price,
+            "min": min(cleaned_prices),
+            "max": max(cleaned_prices),
             "avg": median_price,
-            "sample_size": len(all_prices)
+            "sources": source_list # <--- NEW FIELD
         }
 
     except Exception as e:

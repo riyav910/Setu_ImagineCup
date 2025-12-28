@@ -17,31 +17,36 @@ else:
 
 def generate_creative_listings(product_name, material, tags, price, caption):
     """
-    Generates e-commerce listings for ANY product (Tech, Fashion, Home, etc.).
+    Generates 100% AI-written listings. 
+    Adapts tone: Tech -> Professional, Fashion -> Trendy, Art -> Emotional.
     """
     if not client:
         return None
 
-    # send the Caption for context
+    # The Prompt is now the "Universal Seller"
     prompt = f"""
     Act as an expert E-Commerce Copywriter.
     
-    Product: {product_name}
-    Material/Type: {material}
-    Key Features (Tags): {', '.join(tags[:6])}
-    Visual Description: {caption}
-    Price: {price}
+    Product Context:
+    - Item: {product_name}
+    - Material/Type: {material}
+    - Visual Details: {caption}
+    - Key Traits: {', '.join(tags[:6])}
+    - Selling Price: {price}
 
-    Task: Write 3 distinct listings in JSON format.
-    1. **Amazon**: A generic, SEO-friendly title + 5 feature bullet points (focus on utility, durability, and style based on the tags).
-    2. **Instagram**: A catchy caption suitable for the product type (use emojis).
-    3. **WhatsApp**: A professional, direct sales message.
+    Task:
+    1. Identify the Product Category (e.g., Electronics, Fashion, Home Decor, Tools).
+    2. Write 3 distinct listings tailored to that category's buyer psychology.
+       - **Amazon:** SEO-rich Title + 5 Bullet points. (For Tech: focus on specs/performance. For Fashion: focus on style/fit. For Home: focus on vibe/comfort).
+       - **Instagram:** Trendy, engaging caption with emojis and hashtags.
+       - **WhatsApp:** A polite, direct sales message suitable for forwarding.
 
-    **Tone**: Adapt the tone to the product. (e.g., Professional for office gear, Trendy for fashion, Warm for handmade).
-    
-    Output format MUST be valid JSON:
+    Output JSON ONLY:
     {{
-        "amazon": {{ "title": "...", "features": ["...", "...", "..."] }},
+        "amazon": {{ 
+            "title": "...", 
+            "features": ["...", "...", "...", "...", "..."] 
+        }},
         "instagram": "...",
         "whatsapp": "..."
     }}
@@ -51,7 +56,7 @@ def generate_creative_listings(product_name, material, tags, price, caption):
         completion = client.chat.completions.create(
             model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
+            temperature=0.7, # Higher creativity for better writing
             max_tokens=1024,
             response_format={"type": "json_object"}
         )
@@ -62,27 +67,30 @@ def generate_creative_listings(product_name, material, tags, price, caption):
     
 def analyze_product_details(tags, caption):
     """
-    Simultaneously identifies the Specific Name AND Material.
-    Replaces hardcoded lists.
+    Identifies Name, Material, AND Search Exclusions (Noise).
     """
     if not client:
-        # Fallback if AI is down
-        return {"name": "Handcrafted Product", "material": "Standard Material"}
+        return {"name": "Handcrafted Item", "material": "Standard", "exclusions": []}
 
     prompt = f"""
-    Analyze these image tags and caption to extract the Product Name and Material.
+    Analyze the image tags and caption to extract product details for e-commerce pricing.
     
     Tags: {', '.join(tags)}
     Caption: {caption}
     
     Task:
-    1. Identify the specific Product Name (e.g. "Wingback Chair", "Silk Saree", "Running Shoe").
-    2. Identify the primary Material (e.g. "Velvet", "Leather", "Teak Wood"). If unknown, infer from context or use "Mixed Materials".
+    1. Identify the specific Product Name (e.g. "King Size Bed", "Split AC").
+    2. Identify the Material (e.g. "Teak Wood", "Plastic").
+    3. Identify 3-5 "Noise Keywords" that confuse price search for this specific item.
+       - If "Bed": exclude ["sheet", "cover", "pillow", "mosquito net"].
+       - If "AC": exclude ["remote", "cover", "service", "stand"].
+       - If "Laptop": exclude ["skin", "cover", "bag", "guard"].
     
     Return JSON ONLY:
     {{
         "name": "...",
-        "material": "..."
+        "material": "...",
+        "exclusions": ["word1", "word2", "word3"]
     }}
     """
 
@@ -91,13 +99,11 @@ def analyze_product_details(tags, caption):
             model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=100,
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
     except Exception as e:
         print(f"🕵️ AI Detective Error: {e}")
-        # Intelligent fallback using raw tags if AI fails
         return None
     
 def identify_exact_product(tags, caption):
