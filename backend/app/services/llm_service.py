@@ -15,40 +15,59 @@ if api_key:
 else:
     print("⚠️ WARNING: Groq API Key missing. Listings will be templates.")
 
-def generate_creative_listings(product_name, material, tags, price, caption):
+# ---------------------------------------------------------
+# 1. THE PRODUCT DETECTIVE (Name, Material, Exclusions)
+# ---------------------------------------------------------
+def analyze_product_details(tags, caption):
     """
-    Generates 100% AI-written listings. 
-    Adapts tone: Tech -> Professional, Fashion -> Trendy, Art -> Emotional.
+    Identifies Name, Material, AND Search Exclusions (Noise).
+    Smarter at ignoring props (like shoes/models) in multi-photo uploads.
     """
     if not client:
-        return None
+        return {"name": "Handcrafted Item", "material": "Standard", "exclusions": []}
 
-    # The Prompt is now the "Universal Seller"
     prompt = f"""
-    Act as an expert E-Commerce Copywriter.
+    You are an Expert Visual Merchandiser. Analyze the following GALLERY of images for a SINGLE product listing.
     
-    Product Context:
-    - Item: {product_name}
-    - Material/Type: {material}
-    - Visual Details: {caption}
-    - Key Traits: {', '.join(tags[:6])}
-    - Selling Price: {price}
+    DETECTED TAGS: {', '.join(tags)}
+
+    ⚠️ WARNING: Computer Vision tags are often visually similar but contextually wrong.
+    - Example: It might tag a "Pen" as an "Arrow" or "Weapon" because they are both thin and straight.
+    - Example: It might tag a "Hose" as a "Snake".
+    
+    IMAGE DESCRIPTIONS (Sequential):
+    {caption}
+    
+    ---
+    🛑 CRITICAL RULES FOR IDENTIFICATION:
+    1. **The "Majority Rule":** Count the images. What is the subject in the *majority* of them?
+       - If 4 images show a "Man in a Tracksuit/Co-ord Set" and 1 image shows "Sneakers", the product is the **TRACKSUIT**.
+       - The single sneaker photo is just a "styling detail" or prop. IGNORE IT.
+    
+    2. **"Whole vs. Part" Bias:**
+       - Always prefer the "Whole Outfit" (Set, Tracksuit, Suit, Kurta Set) over a "Part" (Shoes, Watch, Bag) unless *every* image focuses *only* on the part.
+       - If you see "Top", "Pants", and "Shoes" tags -> The product is likely a **Co-ord Set** or **Tracksuit**.
+
+    3. **Ignore Models:**
+       - The model is wearing shoes to complete the look. Do not list the shoes unless the listing is *clearly* for footwear only.
+    ---
+
+    YOUR JOB:
+    1. Look for the **Semantic Cluster**. (e.g., If you see "Office, Desk, Pen, Arrow", the cluster is "Office Supplies", so "Arrow" is wrong).
+    2. Identify the SINGLE main product based on the strongest cluster of tags.
+    3. Ignore isolated tags that conflict with the majority context.
 
     Task:
-    1. Identify the Product Category (e.g., Electronics, Fashion, Home Decor, Tools).
-    2. Write 3 distinct listings tailored to that category's buyer psychology.
-       - **Amazon:** SEO-rich Title + 5 Bullet points. (For Tech: focus on specs/performance. For Fashion: focus on style/fit. For Home: focus on vibe/comfort).
-       - **Instagram:** Trendy, engaging caption with emojis and hashtags.
-       - **WhatsApp:** A polite, direct sales message suitable for forwarding.
+    1. Identify the Main Product Name (e.g. "Men's Black Co-ord Set", "Cotton Tracksuit").
+    2. Identify the Material (e.g. "Cotton Blend", "Polyester").
+    3. Identify "Noise Keywords" (Things visible but NOT for sale).
+       - *Crucial:* If selling a Co-ord Set, add "shoes", "sneakers", "footwear" to exclusions.
 
-    Output JSON ONLY:
+    Return JSON ONLY:
     {{
-        "amazon": {{ 
-            "title": "...", 
-            "features": ["...", "...", "...", "...", "..."] 
-        }},
-        "instagram": "...",
-        "whatsapp": "..."
+        "name": "...",
+        "material": "...",
+        "exclusions": ["word1", "word2"]
     }}
     """
 
@@ -56,49 +75,42 @@ def generate_creative_listings(product_name, material, tags, price, caption):
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, # Higher creativity for better writing
-            max_tokens=1024,
+            temperature=0.2, # Low temp for strict logic
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
     except Exception as e:
-        print(f"Content Gen Error: {e}")
+        print(f"🕵️ AI Detective Error: {e}")
         return None
-    
-def analyze_product_details(tags, caption):
+
+# ---------------------------------------------------------
+# 2. THE PRICING STRATEGIST (Price & Reason)
+# ---------------------------------------------------------
+def analyze_complex_pricing(product_name, material, market_data):
     """
-    Identifies Name, Material, AND Search Exclusions (Noise).
-    Now smarter at ignoring props (like shoes/models) in multi-photo uploads.
+    Inputs: Market Min/Max/Avg.
+    Output: Optimal Price + Strategic Explanation.
     """
     if not client:
-        return {"name": "Handcrafted Item", "material": "Standard", "exclusions": []}
+        return {"recommended_price": int(market_data['avg'] * 1.1), "strategy": "Standard Markup"}
 
+    current_month = datetime.datetime.now().strftime("%B")
+    
     prompt = f"""
-    You are an AI Listing Assistant. You are analyzing a GALLERY of images for a SINGLE product listing.
+    Act as a Senior Pricing Strategist.
     
-    Context from Images:
-    - Detected Tags: {', '.join(tags)}
-    - Visual Narrative: {caption}
+    Product: {product_name} | Material: {material} | Month: {current_month}
     
-    CRITICAL INSTRUCTION:
-    - Identify the MAIN product being sold. 
-    - If the images show a "Man wearing a T-shirt and Sneakers", determine which one is the product.
-    - If 4 photos show a Shirt and 1 shows Shoes, the product is the SHIRT.
-    - Ignore props, models, and accessories (e.g., if selling a dress, ignore the model's shoes/purse).
-    - Do identify if we are selling an accessory (e.g., watch, bag).
-
-    Task:
-    1. Identify the specific Product Name (e.g. "Men's Black Tracksuit", "Printed T-Shirt").
-    2. Identify the Material (e.g. "Cotton Blend", "Polyester").
-    3. Identify 3-5 "Noise Keywords" to exclude from price search.
-       - Example: If selling a "Bed", exclude ["sheet", "pillow"].
-       - Example: If selling a "T-Shirt", exclude ["shoes", "sneakers", "sunglasses"].
+    Market Data:
+    - Low: ₹{market_data['min']} | Avg: ₹{market_data['avg']} | High: ₹{market_data['max']}
     
-    Return JSON ONLY:
+    Task: Determine Optimal Selling Price.
+    Analyze: Seasonality ({material} in {current_month}?), Trends, and Artisan Premium.
+    
+    Output JSON ONLY:
     {{
-        "name": "...",
-        "material": "...",
-        "exclusions": ["word1", "word2", "word3"]
+        "recommended_price": <integer_value>,
+        "strategy": "Max 15 words explanation."
     }}
     """
 
@@ -111,128 +123,38 @@ def analyze_product_details(tags, caption):
         )
         return json.loads(completion.choices[0].message.content)
     except Exception as e:
-        print(f"🕵️ AI Detective Error: {e}")
-        return None
-    
-def identify_exact_product(tags, caption):
-    """
-    Uses Llama 3 to figure out the EXACT product name from vague tags.
-    e.g. Input: ["furniture", "seat", "wheels"], Caption: "Grey object"
-         Output: "Ergonomic Office Chair"
-    """
-    if not client:
-        return "Product" # Fallback
-
-    # We give the AI the raw data and ask for a 2-3 word specific name
-    prompt = f"""
-    Analyze these image tags and caption to identify the specific product.
-    
-    Tags: {', '.join(tags)}
-    Caption: {caption}
-    
-    Rules:
-    1. Be specific (e.g., instead of "Shoe", say "Running Sneaker").
-    2. Instead of "Furniture", say "Wingback Chair" or "Office Desk".
-    3. Return ONLY the name (max 3 words). No punctuation.
-    """
-
-    try:
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2, # Low temp = more factual
-            max_tokens=20
-        )
-        # Clean up the response (remove quotes or extra spaces)
-        product_name = completion.choices[0].message.content.strip().replace('"', '').replace(".", "")
-        return product_name
-    except Exception as e:
-        print(f"🕵️ Product Detective Error: {e}")
-        return None
-    
-def analyze_complex_pricing(product_name, material, market_data):
-    """
-    The Advanced Pricing Engine.
-    Inputs: Market Min/Max/Avg, Seasonality, Trends.
-    Output: Optimal Price + Strategic Explanation.
-    """
-    if not client:
-        return {"multiplier": 1.1, "strategy": "Standard Markup (AI Offline)"}
-
-    current_month = datetime.datetime.now().strftime("%B")
-    
-    # Construct a detailed economic scenario for the AI
-    prompt = f"""
-    Act as a Senior Pricing Strategist for a premium handmade marketplace.
-    
-    Product: {product_name}
-    Material: {material}
-    Current Month: {current_month}
-    
-    Market Data (Competitors):
-    - Lowest Price: ₹{market_data['min']} (Mass produced/Cheap)
-    - Average Price: ₹{market_data['avg']} (Standard)
-    - Highest Price: ₹{market_data['max']} (Luxury/Branded)
-    
-    Task: Determine the Optimal Selling Price to maximize profit without losing customers (churn).
-    
-    Analyze these factors:
-    1. **Seasonality:** Is {material} in high demand in {current_month}? (e.g. Wool in Dec = High, Cotton in May = High).
-    2. **Trend:** Is {product_name} currently fashionable?
-    3. **Artisan Premium:** Handmade items should cost more than the "Lowest" but be competitive with "Highest".
-    4. **Psychology:** Avoid pricing too high above the 'Average' unless the material is premium.
-    
-    Output JSON ONLY:
-    {{
-        "recommended_price": <integer_value>,
-        "strategy": "Explanation of why this price was chosen (max 15 words). e.g., 'Premium pricing due to high winter demand for wool.'"
-    }}
-    """
-
-    try:
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, # Balanced creativity/logic
-            response_format={"type": "json_object"}
-        )
-        return json.loads(completion.choices[0].message.content)
-    except Exception as e:
         print(f"Pricing AI Error: {e}")
-        # Fallback: Just use average + 10%
         return {"recommended_price": int(market_data['avg'] * 1.1), "strategy": "Safe average markup."}
-    
-def analyze_price_trends(product_name, material, current_price):
+
+# ---------------------------------------------------------
+# 3. THE COPYWRITER (Listings)
+# ---------------------------------------------------------
+def generate_creative_listings(product_name, material, tags, price, caption):
     """
-    Asks Llama 3 to act as a Pricing Analyst.
-    Returns a multiplier (e.g., 1.2 for high demand, 0.9 for off-season).
+    Generates 100% AI-written listings adapting tone to the product.
     """
     if not client:
-        return {"multiplier": 1.1, "reason": "Standard markup (AI unavailable)."}
-
-    current_month = datetime.datetime.now().strftime("%B")
+        return None
 
     prompt = f"""
-    Act as a Pricing Algo.
-    Product: {product_name}
-    Material: {material}
-    Current Month: {current_month}
-    Base Market Price: ₹{current_price}
+    Act as an expert E-Commerce Copywriter.
+    
+    Product: {product_name} ({material})
+    Context: {caption}
+    Price: {price}
 
-    Analyze 3 factors:
-    1. Seasonality: Is this material good for {current_month}?
-    2. Trend: Is {product_name} trending?
-    3. Quality: Is {material} considered premium?
-
-    Based on this, suggest a Price Multiplier (0.8 to 1.5).
-    - < 1.0: Off-season/Low demand to reduce churn.
-    - 1.0 - 1.2: Standard competitive.
-    - > 1.3: High seasonal demand/Premium profit.
+    Task:
+    1. Identify Product Category (Tech, Fashion, Home).
+    2. Write 3 distinct listings:
+       - **Amazon:** Title + 5 Bullet points (Tailored to category).
+       - **Instagram:** Trendy caption with emojis/hashtags.
+       - **WhatsApp:** Polite, direct sales message.
 
     Output JSON ONLY:
     {{
-        "multiplier": 1.2,
-        "reason": "High demand in winter for wool."
+        "amazon": {{ "title": "...", "features": ["..."] }},
+        "instagram": "...",
+        "whatsapp": "..."
     }}
     """
 
@@ -240,10 +162,81 @@ def analyze_price_trends(product_name, material, current_price):
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1, # Lower temperature for logical math
+            temperature=0.3,
+            max_tokens=1024,
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
     except Exception as e:
-        print(f"Pricing AI Error: {e}")
-        return {"multiplier": 1.1, "reason": "Standard safe markup."}
+        print(f"Content Gen Error: {e}")
+        return None
+
+# ---------------------------------------------------------
+# 4. THE PHOTOGRAPHY COACH (Advice)
+# ---------------------------------------------------------
+def generate_photo_critique(product_name, quality_stats, tags):
+    """
+    Acts as a professional photographer giving specific advice.
+    """
+    if not client:
+        return None
+
+    brightness, sharpness = quality_stats
+    
+    prompt = f"""
+    Act as a Photo Mentor.
+    Product: {product_name}
+    Stats: Brightness {int(brightness)} (0-255), Sharpness {int(sharpness)} (0-1000).
+
+    Task: Provide 2 short, specific tips to improve the photo for THIS item.
+    
+    Output JSON ONLY:
+    {{ "tips": ["Tip 1", "Tip 2"] }}
+    """
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(completion.choices[0].message.content)
+        return data.get("tips", [])
+    except Exception as e:
+        print(f"📸 Photo Coach Error: {e}")
+        return None
+    
+def extract_selling_points(text):
+    """
+    Extracts high-value keywords from user input to force into the search.
+    Replaces azure_text.py.
+    """
+    if not client or not text:
+        return []
+
+    prompt = f"""
+    Extract 3-5 specific, high-value e-commerce search keywords from this user description.
+    Focus on materials, styles, or unique features.
+    
+    User Input: "{text}"
+    
+    Output JSON ONLY:
+    {{
+        "keywords": ["keyword1", "keyword2"]
+    }}
+    """
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1, # Low temp = strict extraction
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(completion.choices[0].message.content)
+        return data.get("keywords", [])
+    except Exception as e:
+        print(f"🔑 Keyword Extraction Error: {e}")
+        # Fallback: Simple split if AI fails
+        return [w.strip() for w in text.split() if len(w) > 3]

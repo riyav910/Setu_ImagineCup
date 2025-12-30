@@ -1,20 +1,25 @@
 import cv2
 import numpy as np
 from app.services.market_spy import get_market_data 
-from app.services.azure_text import extract_selling_points
+# from app.services.azure_text import extract_selling_points
 from app.services.llm_service import (
     generate_creative_listings, 
     analyze_complex_pricing, 
-    analyze_product_details
+    analyze_product_details,
+    generate_photo_critique,
+    extract_selling_points
 )
 # --- CONSTANTS ---
 # We keep IGNORED_TAGS because Azure sometimes gives garbage like "indoor" or "floor"
 IGNORED_TAGS = ["text", "writing", "design", "indoor", "table", "floor", "close-up", "furniture", "houseplant", "wall", "ground", "surface", "ceiling"]
-def get_product_info(raw_tags, caption):
+def get_product_info(raw_tags, caption, vision_prompt=""):
     """
     Returns Name, Material, AND Exclusions.
     """
-    ai_data = analyze_product_details(raw_tags, caption)
+    ai_data = analyze_product_details(
+    raw_tags,
+    f"{caption}\n\n{vision_prompt}"
+    )
     
     if ai_data:
         # SAFETY FIX: Use .get() and 'or' to ensure we never return None
@@ -22,6 +27,8 @@ def get_product_info(raw_tags, caption):
         name = ai_data.get("name") or "Handcrafted Item"
         material = ai_data.get("material") or "Standard Material"
         exclusions = ai_data.get("exclusions") or []
+
+        print("🧠 FINAL LLM INPUT:\n", f"{caption}\n\n{vision_prompt}")
         
         return name, material, exclusions
 
@@ -50,15 +57,6 @@ def calculate_smart_price(main_object, material, exclusions, user_features="", u
     
     # PASS THE EXCLUSIONS HERE
     market_stats = get_market_data(search_query, exclusions)
-    
-    if not market_stats:
-        print("⚠️ Specific search failed. Retrying generic...")
-        market_stats = {
-             "min": ..., 
-             "max": ..., 
-             "avg": ..., 
-             "sources": ["Estimated based on User Input"] # Fallback source
-         }
 
     # 2. FALLBACK: USE USER'S PRICE (If Spy Failed)
     if not market_stats:
@@ -98,16 +96,37 @@ def analyze_image_quality(image_bytes):
     sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
     return brightness, sharpness
 
-def generate_advice(confidence, quality_stats, tags):
+def generate_advice(confidence, quality_stats, tags, product_name):
+    """
+    Generates dynamic photography advice.
+    Primary: AI Photography Coach.
+    Fallback: Logic-based checks.
+    """
+    
+    # 1. 🚀 Try AI Coach First (Dynamic)
+    ai_tips = generate_photo_critique(product_name, quality_stats, tags)
+    
+    if ai_tips:
+        # Add emojis to make it friendly
+        return [f"💡 {tip}" for tip in ai_tips]
+
+    # 2. 🛡️ Fallback (Logic Based)
+    # Only runs if AI fails. Kept simple.
     brightness, sharpness = quality_stats
     advice = []
-    if sharpness < 100: advice.append("⚠️ Image is blurry. Hold steady.")
-    elif sharpness < 500: advice.append("ℹ️ Focus is okay, but could be sharper.")
-    else: advice.append("✅ Great focus!")
     
-    if brightness < 60: advice.append("⚠️ Too dark. Find better light.")
-    elif brightness > 200: advice.append("⚠️ Too bright. Avoid flash.")
-    else: advice.append("✅ Lighting is balanced.")
+    if sharpness < 100: 
+        advice.append("⚠️ Image is blurry. Tap screen to focus.")
+    elif sharpness > 500:
+        advice.append("✅ Crystal clear focus!")
+    
+    if brightness < 60: 
+        advice.append("⚠️ A bit dark. Try moving near a window.")
+    elif brightness > 200: 
+        advice.append("⚠️ Too bright. Reduces glare.")
+    else:
+        advice.append("✅ Perfect lighting.")
+        
     return advice
 
 def generate_listings(main_object, material, tags, price, caption):
